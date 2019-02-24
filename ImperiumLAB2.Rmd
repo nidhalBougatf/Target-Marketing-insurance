@@ -1,0 +1,387 @@
+---
+title: "LAB2"
+author: "Louay Boukhris-Ahmed Masmoudi-Ghorbel Omar-Ben Brahim Chihebeddine-Bougatf Nidhal-Bouslama Hibatollah "
+date: "19 Nov 2018"
+output: html_document
+---
+# Plan
+
+## Définition du problème 
+## Compréhension du métier 
+## Compréhension des données 
+## Préparation des données 
+## Formule de Scoring
+## Evaluation 
+## Déploiement
+
+# Définition du problème
+
+Afin de gagner la confiance des clients et d’attirer de nouveaux abonnés, la compagnie d’assurance canadienne AssuExperts Inc doit mettre en place une nouvelle politique marketing adaptée au comportement de ses clients actuels et potentiels. Pour ce faire, l’entreprise doit comprendre ses clients. De plus, il est important d'identifier un profil de client (intéressé / non intéressé) qui constituerait une solution pour déterminer une cible marketing spécifique. Cela non seulement augmentera l'efficacité de la campagne, mais réduira également les coûts en évitant les contacts inutiles.
+
+
+# Compréhension du métier 
+
+Notre mission est de savoir qui sont les clients actuels et potentiels de A ssur E xperts INC , et quels sont leurs degrés d’appétence pour souscrire à une police d’assurance sur caravan.
+
+Pour ce faire, nous allons travailler sur les 3 volets suivants:
+
+- Collaboration avec le service marketing pour solliciter toutes les catégories de clients potentiellement intéressées par une police d’assurance sur caravane.
+- Formulation d'une description méticuleuse sur les clients actuels et potentiels, et leurs degrés d’appétence pour souscrire à une police d’assurance sur caravane.
+- Mettre en place une modélisation qui servira à maximiser le nombre des clients réceptifs en
+ciblant au plus la moitié de la clientèle active.
+
+# Compréhension des données
+
+### Importation du jeu des données "AssurancExpertsInc.txt"
+```{r}
+library(dplyr)
+AssurancExpertsInc <- read.delim("~/Documents/lab2/AssurancExpertsInc.txt")
+dim_desc(AssurancExpertsInc)
+head(AssurancExpertsInc)
+```
+On a un jeu de données qui est composé de 87 variables et 9822 observations.
+
+Les caractéristiques recueillies des clients sont partagées en deux familles de variables comme suit :
+- 43 attributs sociodémographiques : SD1, ...SD43
+- 42 attributs propriétaire de produit : PO44,...PO85
+- L’attribut CLASS représente la réponse des clients interrogés. La valeur YES correspond à ceux
+qui désirent avoir des maisons mobiles.
+-
+La colonne STATUS indique si l’observation est destinée à la phase d’apprentissage ou à la phase
+de test.
+
+Pour une meilleure visualisation des données, nous avons remplacé les noms des colonnes et les valeurs chiffrés par leurs descriptions respectives.
+
+### Changement des noms des colonnes et décodage de leurs valeurs
+
+```{r}
+
+
+colnames <- read.delim("~/Documents/lab2/colnames.txt")
+head(colnames)
+names(AssurancExpertsInc)=colnames$Columname
+#L0
+L0 <- read.csv2("~/Documents/lab2/L0.txt")
+print(nrow(AssurancExpertsInc))
+AssurancExpertsInc[,"Customer Subtype"]<- L0[match(AssurancExpertsInc[,"Customer Subtype"],L0$id),3]
+
+#L1
+L1 <- read.csv("~/Documents/lab2/L1.txt", header=FALSE, comment.char="#")
+AssurancExpertsInc[,"Avg age"]<- L1[match(AssurancExpertsInc[,"Avg age"],L1$V1),2]
+
+#L2
+L2 <- read.csv("~/Documents/lab2/L2.txt", header=FALSE, comment.char="#")
+AssurancExpertsInc[,"Customer main type"]<- L2[match(AssurancExpertsInc[,"Customer main type"],L2$V1),2]
+
+
+#L3
+for (i in which(colnames(AssurancExpertsInc)=="Roman catholic"):which(colnames(AssurancExpertsInc)=="Purchasing power class")){
+  AssurancExpertsInc[,i] <- factor(AssurancExpertsInc[,i],
+                   levels=c(0:9),
+                   labels=c("0%",
+                            "1-10%",
+                            "11-23%",
+                            "24-36%",
+                            "37-49%",
+                            "50-62%",
+                            "63-75%",
+                            "76-88%",
+                            "89-99%",
+                            "100%"),ordered = TRUE)
+   AssurancExpertsInc[,i] <- as.ordered(AssurancExpertsInc[,i] )
+}
+#L4
+
+for (i in which(colnames(AssurancExpertsInc)=="Contribution private third party insurance"):which(colnames(AssurancExpertsInc)=="Contribution social security insurance policies")){
+  AssurancExpertsInc[,i] <- factor(AssurancExpertsInc[,i],
+                   levels=c(0:9),
+                   labels=c("0",
+                            "1",
+                            "50",
+                            "100",
+                            "200",
+                            "500",
+                            "1000",
+                            "5000",
+                            "10,000",
+                            "20,000"))
+   AssurancExpertsInc[,i] <- as.ordered(AssurancExpertsInc[,i])
+ }
+
+```
+
+
+```{r}
+str(AssurancExpertsInc)
+```
+
+On obtient 23 variables quantitatives et 64 variables qualitatives. 
+
+### Visualisation des données
+
+Répartition de la modalité CLASS (nombre de clients intéressés/non intéressés )
+
+```{r}
+data<-AssurancExpertsInc
+library(plotly)
+classLabelFreq <- data.frame(data$CLASS)
+classLabelFreq$data.CLASS <- as.factor(data$CLASS)
+fig1 = table(data$CLASS)
+df1 = data.frame(fig1)
+p <- plot_ly(
+  x = df1$Var1,
+  y = df1$Freq,
+  name = "CARAVAN",
+  type = "bar"
+)
+p
+```
+
+On peut intérpreter que le nombre de clients non intéressés par l'assurance de caravane sont beaucoup plus nombreux que ceux qui sont intéressés.
+
+### Visualisation de la répartition de CLASS par rapport les autres variables
+
+#### Customer Main Type par rapport à la CLASS
+
+```{r}
+library(sqldf)
+df2 = sqldf("SELECT s.`Customer main type`,(SELECT count(*) FROM data d1 WHERE CLASS='Yes' and s.`Customer main type` = d1.`Customer main type`) as 'NumberYes',(SELECT count(*) FROM data d2 WHERE CLASS='No' and s.`Customer main type`=d2.`Customer main type`) as 'NumberNo' FROM data s GROUP BY s.`Customer main type`")
+CustomerMainType <- df2$`Customer main type`
+Yes <- df2$NumberYes
+No <- df2$NumberNo
+datadf2 <- data.frame(CustomerMainType, Yes, No)
+p <- plot_ly(datadf2, x = ~CustomerMainType, y = ~Yes, type = 'bar', name = 'Yes') %>%
+  add_trace(y = ~No, name = 'No') %>%
+  layout(yaxis = list(title = 'Count'), barmode = 'stack')
+p
+#AssurancExpertsInc$`Customer main type`
+```
+On remarque que la classe modale est 'Family with grown ups', cette classe comporte aussi le nombre le plus important des votes des clients intéressés par l'assurance du caravane.
+
+#### Average Age par rapport à la CLASS
+
+```{r}
+df2 = sqldf("SELECT s.`Avg age`,(SELECT count(*) FROM data d1 WHERE CLASS='Yes' and s.`Avg age` = d1.`Avg age`) as 'NumberYes',(SELECT count(*) FROM data d2 WHERE CLASS='No' and s.`Avg age`=d2.`Avg age`) as 'NumberNo' FROM data s GROUP BY s.`Avg age`")
+Avgage <- df2$`Avg age`
+Yes <- df2$NumberYes
+No <- df2$NumberNo
+datadf2 <- data.frame(Avgage, Yes, No)
+p <- plot_ly(datadf2, x = ~Avgage, y = ~Yes, type = 'bar', name = 'Yes') %>%
+  add_trace(y = ~No, name = 'No') %>%
+  layout(yaxis = list(title = 'Count'), barmode = 'stack')
+p
+```
+On constate ici que les clients intéressés par l'assurance appartiennent à la tranche d'age entre 30 et 60.
+
+
+#### Average Income par rapport à la CLASS
+
+```{r}
+df2 = sqldf("SELECT s.`Average income`,(SELECT count(*) FROM data d1 WHERE CLASS='Yes' and s.`Average income` = d1.`Average income`) as 'NumberYes',(SELECT count(*) FROM data d2 WHERE CLASS='No' and s.`Average income`=d2.`Average income`) as 'NumberNo' FROM data s GROUP BY s.`Average income`")
+Averageincome <- df2$`Average income`
+Yes <- df2$NumberYes
+No <- df2$NumberNo
+datadf2 <- data.frame(Averageincome, Yes, No)
+p <- plot_ly(datadf2, x = ~Averageincome, y = ~Yes, type = 'bar', name = 'Yes') %>%
+  add_trace(y = ~No, name = 'No') %>%
+  layout(yaxis = list(title = 'Count'), barmode = 'stack')
+p
+```
+On constate que les clients intéressés par l'assurance est concentrée au niveau de 24 à 62% qui se caractérise par un revenue moyen.
+
+Vu le nombre de variables énorme dans notre jeu de données, on va limiter notre visualisation seulement au niveau des variables qui présentent une concentration immportante des clients dans la classe modale.
+
+```{r}
+db1=AssurancExpertsInc[which(AssurancExpertsInc$CLASS=="Yes"),]
+for(i in 1:85){
+maxi=max(table(db1[,i]))
+if (maxi>400){
+  print(names(db1)[i])
+}
+}
+```
+
+#### Income >123.000 par rapport à la CLASS
+
+```{r}
+df2 = sqldf("SELECT s.`Income >123.000`,(SELECT count(*) FROM data d1 WHERE CLASS='Yes' and s.`Income >123.000` = d1.`Income >123.000`) as 'NumberYes',(SELECT count(*) FROM data d2 WHERE CLASS='No' and s.`Income >123.000`=d2.`Income >123.000`) as 'NumberNo' FROM data s GROUP BY s.`Income >123.000`")
+Income..123.000 <- df2$`Income >123.000`
+Yes <- df2$NumberYes
+No <- df2$NumberNo
+datadf2 <- data.frame(Income..123.000, Yes, No)
+p <- plot_ly(datadf2, x = ~Income..123.000, y = ~Yes, type = 'bar', name = 'Yes') %>%
+  add_trace(y = ~No, name = 'No') %>%
+  layout(yaxis = list(title = 'Count'), barmode = 'stack')
+p
+```
+Comme on a déjà intérpreté auparavant, les clients les plus intéressés ne sont pas généralement caractérisés d'un revenue trés élevé (>123.000)
+
+# Préparation des données 
+
+```{r eval=FALSE, echo = FALSE}
+# ensure results are repeatable
+set.seed(7)
+# load the library
+library(caret)
+# prepare training scheme
+control <- trainControl(method="repeatedcv", number=3, repeats=3)
+# train the model
+model <- train(CLASS~., data=AssurancExpertsInc[which(AssurancExpertsInc$STATUS=="Learning"),], method="lvq", preProcess="scale", trControl=control)
+# estimate variable importance
+importance <- varImp(model, scale=FALSE)
+# summarize importance
+print(importance)
+# plot importance
+plot(importance)
+```
+
+```{r eval=FALSE, echo = FALSE}
+library(Boruta)
+FinalData <- read.csv("~/Downloads/test.csv", row.names = 1)
+data.train <-FinalData[which(FinalData$STATUS == "Learning"),]
+data.test <-FinalData[which(FinalData$STATUS == "Test"),]
+
+set.seed(123)
+boruta.train <- Boruta(CLASS~. ,data = AssurancExpertsInc.train, doTrace = 2)
+
+print(boruta.train$finalDecision)
+conclusion=data.frame(names(AssurancExpertsInc.train[,-1]),boruta.train$finalDecision)
+conclusion=conclusion[which(conclusion$boruta.train.finalDecision=="Confirmed"),]
+View(conclusion)
+```
+
+
+```{r eval=FALSE, echo = FALSE}
+
+conclusion$X=NULL
+
+conslusion1 <- importance
+
+columns<-c(as.character(conslusion1$V1),as.character(conclusion$names.AssurancExpertsInc.train....1..))
+nrow
+colnammes=unique(columns)
+colnammes
+```
+
+```{r eval=FALSE, echo = FALSE}
+filteredAssuranceInc = AssurancExpertsInc
+for ( i in names(filteredAssuranceInc))
+{
+  if(!(i %in% colnammes))
+  { 
+    filteredAssuranceInc[[i]]=NULL
+  }
+
+}
+filteredAssuranceInc$CLASS=AssurancExpertsInc$CLASS
+filteredAssuranceInc$STATUS=AssurancExpertsInc$STATUS
+write.csv(filteredAssuranceInc,"test.csv")
+```
+
+Vu le nombre énorme de variables, on a utilisé une selection de paramètres les plus importants pour déterminer l'intéret des clients au assurance de caravane.
+
+On a utilisé 2 méthodes : "Boruta" qui nous a réduit nos 85 variables en 32 variables seulement, et "VarImp" qui a réduit ces variables en 20 variables importantes.
+
+L'union de ces deux méthodes a donné un jeu de données de 44 variables.
+
+# Formule de Scoring
+
+
+
+```{r}
+FinalData <- read.csv("~/Downloads/test.csv", row.names = 1)
+db<-FinalData
+db1=db[which(db$CLASS=="Yes"),]
+db2=db[which(db$CLASS=="No"),]
+
+
+#calcule weights Yes
+weightsYes=data.frame(row.names = names(db))
+for (i in 1:42){
+  weight=array(table(db1[,i])/586)
+for (j in 1:length(weight)){
+  weightsYes[i,j]=weight[j]
+}
+}
+weightsYes[is.na(weightsYes)]<-0
+
+#calcule weights no
+
+
+weightsNo=data.frame(row.names = names(db))
+for (i in 1:42){
+  weight=array(table(db2[,i])/9236)
+  for (j in 1:length(weight)){
+    weightsNo[i,j]=weight[j]
+  }
+}
+weightsNo[is.na(weightsNo)]<-0
+
+#clacule score yes
+
+db$scoreYes<-NA
+db$scoreYes=as.numeric(db$scoreYes)
+scoring=c()
+for(i in seq(1,9822)){
+  score<-0
+  for (j in seq(1,42)){
+    if (is.numeric(db[,j])){
+      ind<-db[i,j]
+      score<-sum(score,as.numeric(weightsYes[j,ind]))
+    }
+    else {
+      ind<-match(db[i,j],levels(db[,j]))
+      score<-sum(score,as.numeric(weightsYes[j,ind]))
+    }
+
+  }
+db[i,45]<-score
+}
+
+#clacule score no
+db$scoreNo<-NA
+db$scoreNo=as.numeric(db$scoreNo)
+scoring=c()
+for(i in seq(1,9822)){
+  score<-0
+  for (j in seq(1,42)){
+    if (is.numeric(db[,j])){
+      ind<-db[i,j]
+      score<-sum(score,as.numeric(weightsNo[j,ind]))
+    }
+    else {
+      ind<-match(db[i,j],levels(db[,j]))
+      score<-sum(score,as.numeric(weightsNo[j,ind]))
+    }
+    
+  }
+  db[i,46]<-score
+}
+#calcule score 
+db$score<-db$scoreYes-db$scoreNo
+plot(db$CLASS,db$score)
+```
+On peut intérpreter que les scores des clients intéressés sont concentrés proches de la valeur 0, par contre les clients non intéressés ont des scores proches de -0.5.
+
+
+# Evaluation
+
+```{r}
+nrow(db[which(db$score>0),])
+head(db[which(db$score>0),])
+```
+
+On a constaté d'après nos résultats qu'il ya eu des clients parmi ceux qui ont montré un intérêt à l’achat d’une caravane lors du sondage qui ne sont pas forcement intéressés. En revanche, Pour autres clients ayant repondu 'no', il s'est avéré qu'ils peuvent être intéressés.
+
+Le concept de sondage ne décrit pas réellement le degré d'intéret des clients au assurance de caravane, car il se déroule d'une manière rapide et alétoire.
+
+Donc les clients qui ont répondu 'no' et qui sont intéressés d'après nos résultats sont les clients cibles et vont probablement etre convaincus à condition de mettre en place la stratégie de Marketing convenable.
+
+# Déploiment
+
+Le résultat de ce projet est une formule de scoring basée sur les poids des modalités des variables sélectionnées.
+
+Pour obtenir une liste des clients potentiels, on recommande cibler les clients ayant un score positif.
+
+
+
